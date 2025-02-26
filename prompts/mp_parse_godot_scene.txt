@@ -1,0 +1,12 @@
+Purpose: Create a python script that parses a godot 4.3 scene file into a human readable .md file
+Instructions:
+	The .md file should include a node tree
+	Each node should have a relative link to any script that it has
+	Ignore details that are only used by the game engine and not needed for AI Code Assistants
+	Include relevant details like the text of a UI element for example or a link to any art assets
+	Include details about signals in the scene file
+	The python file should accept a relative path to the godot scene file as an input on the commandline
+	The python file should use UV with the script dependencies in the python file
+	A usage doc for UV will be provided in the context
+Sections: godot-scene-data
+Variables: godot-scene-data
