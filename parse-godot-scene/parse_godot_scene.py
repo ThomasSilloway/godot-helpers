@@ -20,21 +20,39 @@ def parse_godot_scene(file_path):
         if line.startswith('['):
             if line.startswith('[ext_resource'):
                 current_section = 'resource'
-                match = re.search(r'path="([^"]+)" id="([^"]+)"', line)
+                match = re.search(r'path="([^"]+)".*?id="([^"]+)"', line)
                 if match:
                     resources[match.group(2)] = match.group(1)
             elif line.startswith('[node'):
                 current_section = 'node'
                 node = {}
-                node['name'] = re.search(r'name="([^"]+)"', line).group(1)
-                node['type'] = re.search(r'type="([^"]+)"', line).group(1)
-                node['parent'] = re.search(r'parent="([^"]+)"', line).group(1) if 'parent=' in line else None
-                # Add script detection
-                script_match = re.search(r'script="([^"]+)"', line)
-                if script_match:
-                    node['script'] = script_match.group(1)
-                node['properties'] = {}
-                nodes.append(node)
+                
+                # Extract required attributes
+                name_match = re.search(r'name="([^"]+)"', line)
+                type_match = re.search(r'type="([^"]+)"', line)
+                instance_match = re.search(r'instance=ExtResource\("([^"]+)"\)', line)
+                
+                if name_match:
+                    node['name'] = name_match.group(1)
+                    # For instanced scenes, use the instance path as type if no explicit type
+                    if instance_match:
+                        node['type'] = resources.get(instance_match.group(1), 'Unknown Instance')
+                        node['is_instance'] = True
+                    elif type_match:
+                        node['type'] = type_match.group(1)
+                    
+                    # Optional parent extraction
+                    parent_match = re.search(r'parent="([^"]+)"', line)
+                    node['parent'] = parent_match.group(1) if parent_match else None
+
+                    # Optional script extraction
+                    script_match = re.search(r'script="([^"]+)"', line)
+                    if script_match:
+                        node['script'] = script_match.group(1)
+
+                    node['properties'] = {}
+                    nodes.append(node)
+
             elif line.startswith('[connection'):
                 current_section = 'connection'
                 connections.append(line)
@@ -109,6 +127,9 @@ def generate_markdown(nodes, connections, resources, output_path):
     def write_node_md(file, node, indent=0):
         prefix = "  " * indent + "- "
         file.write(f"{prefix}**{node['name']}** ({node['type']}")
+        
+        if node.get('is_instance'):
+            file.write(", instanced scene")
         
         # Add script information if present
         if 'script' in node:
