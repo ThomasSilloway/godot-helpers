@@ -9,37 +9,58 @@ def parse_godot_scene(file_path):
     nodes = []
     connections = []
     resources = {}
-
+    current_section = None
+    
     for line in lines:
-        if line.startswith('[ext_resource'):
-            match = re.search(r'path="([^"]+)" id="([^"]+)"', line)
-            if match:
-                resources[match.group(2)] = match.group(1)
-        elif line.startswith('[node'):
-            node = {}
-            node['name'] = re.search(r'name="([^"]+)"', line).group(1)
-            node['type'] = re.search(r'type="([^"]+)"', line).group(1)
-            node['parent'] = re.search(r'parent="([^"]+)"', line).group(1) if 'parent=' in line else None
-            node['properties'] = {}
-            nodes.append(node)
-        elif line.startswith('[connection'):
-            connections.append(line.strip())
-        elif '=' in line:
-            parts = line.strip().split(' = ', 1)
+        line = line.strip()
+        if not line:  # Skip empty lines
+            continue
+            
+        # Detect section changes
+        if line.startswith('['):
+            if line.startswith('[ext_resource'):
+                current_section = 'resource'
+                match = re.search(r'path="([^"]+)" id="([^"]+)"', line)
+                if match:
+                    resources[match.group(2)] = match.group(1)
+            elif line.startswith('[node'):
+                current_section = 'node'
+                node = {}
+                node['name'] = re.search(r'name="([^"]+)"', line).group(1)
+                node['type'] = re.search(r'type="([^"]+)"', line).group(1)
+                node['parent'] = re.search(r'parent="([^"]+)"', line).group(1) if 'parent=' in line else None
+                # Add script detection
+                script_match = re.search(r'script="([^"]+)"', line)
+                if script_match:
+                    node['script'] = script_match.group(1)
+                node['properties'] = {}
+                nodes.append(node)
+            elif line.startswith('[connection'):
+                current_section = 'connection'
+                connections.append(line)
+            else:
+                current_section = None
+        # Handle properties within a node section
+        elif current_section == 'node' and '=' in line:
+            parts = line.split(' = ', 1)
             if len(parts) == 2:
                 key, value = parts
-                nodes[-1]['properties'][key] = value
+                if nodes:  # Only add properties if we have a node
+                    nodes[-1]['properties'][key] = value
 
     return nodes, connections, resources
 
 def is_relevant_property(key, value):
-    # Only include properties that are UI text or link to art assets.
+    # Only include properties that are UI text, link to art assets, scripts, or resources
     key_lower = key.lower()
     if key_lower in ["text", "label", "tooltip"]:
         return True
     if value.startswith("http://") or value.startswith("https://"):
         return True
     if re.search(r'\.(png|jpg|jpeg|gif|ogg|wav)$', value, re.IGNORECASE):
+        return True
+    # Add detection for scripts and resources
+    if re.search(r'\.(gd|tres|tscn)$', value, re.IGNORECASE):
         return True
     return False
 
@@ -87,7 +108,19 @@ def generate_markdown(nodes, connections, resources, output_path):
     # Recursive helper to write nodes with hierarchy.
     def write_node_md(file, node, indent=0):
         prefix = "  " * indent + "- "
-        file.write(f"{prefix}**{node['name']}**\n")
+        file.write(f"{prefix}**{node['name']}** ({node['type']}")
+        
+        # Add script information if present
+        if 'script' in node:
+            script_value = node['script']
+            if 'ExtResource' in script_value:
+                res_match = re.search(r'ExtResource\("([^"]+)"\)', script_value)
+                if res_match:
+                    resource_id = res_match.group(1)
+                    script_value = resources.get(resource_id, script_value)
+            file.write(f", script: {script_value}")
+        file.write(")\n")
+        
         for key, value in node.get('properties', {}).items():
             if 'ExtResource' in value:
                 res_match = re.search(r'ExtResource\("([^"]+)"\)', value)
