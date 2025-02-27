@@ -99,7 +99,12 @@ def format_connection(conn_str, owner):
     method = info.get('method', '')
     return f"When signal '{signal}' is emitted from '{frm}', call method '{method}' on '{to}'."
 
-def generate_markdown(nodes, connections, resources, output_path):
+def generate_markdown(nodes, connections, resources, scene_name):
+    # Modified to return markdown content instead of writing to file
+    output = []
+    output.append(f'# {scene_name}\n')
+    output.append('## Nodes\n')
+    
     # Build node hierarchy
     for node in nodes:
         node['children'] = []
@@ -120,18 +125,18 @@ def generate_markdown(nodes, connections, resources, output_path):
                 parent_node['children'].append(node)
             else:
                 roots.append(node)
+    
     # Determine owner from the scene root node.
     owner = roots[0]['name'] if roots else ""
 
-    # Recursive helper to write nodes with hierarchy.
-    def write_node_md(file, node, indent=0):
+    def write_node_md(node, indent=0):
+        lines = []
         prefix = "  " * indent + "- "
-        file.write(f"{prefix}**{node['name']}** ({node['type']}")
+        node_line = f"{prefix}**{node['name']}** ({node['type']}"
         
         if node.get('is_instance'):
-            file.write(", instanced scene")
+            node_line += ", instanced scene"
         
-        # Add script information if present
         if 'script' in node:
             script_value = node['script']
             if 'ExtResource' in script_value:
@@ -139,8 +144,9 @@ def generate_markdown(nodes, connections, resources, output_path):
                 if res_match:
                     resource_id = res_match.group(1)
                     script_value = resources.get(resource_id, script_value)
-            file.write(f", script: {script_value}")
-        file.write(")\n")
+            node_line += f", script: {script_value}"
+        node_line += ")\n"
+        lines.append(node_line)
         
         for key, value in node.get('properties', {}).items():
             if 'ExtResource' in value:
@@ -149,30 +155,64 @@ def generate_markdown(nodes, connections, resources, output_path):
                     resource_id = res_match.group(1)
                     value = resources.get(resource_id, value)
             if is_relevant_property(key, value):
-                file.write(f"{'  '*(indent+1)}- {key}: {value}\n")
+                lines.append(f"{'  '*(indent+1)}- {key}: {value}\n")
         for child in node.get('children', []):
-            write_node_md(file, child, indent+1)
+            lines.extend(write_node_md(child, indent+1))
+        return lines
 
-    with open(output_path, 'w') as file:
-        file.write('# Godot Scene\n\n')
-        file.write('## Nodes\n')
-        for root in roots:
-            write_node_md(file, root)
-        file.write('\n## Connections\n')
+    for root in roots:
+        output.extend(write_node_md(root))
+    
+    if connections:
+        output.append('\n## Connections\n')
         for connection in connections:
-            file.write(f"- {format_connection(connection, owner)}\n")
+            output.append(f"- {format_connection(connection, owner)}\n")
+    
+    return ''.join(output)
+
+def process_folder(folder_path):
+    # Find all .tscn files in the folder
+    scene_files = []
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith('.tscn'):
+                scene_files.append(os.path.join(root, file))
+    
+    if not scene_files:
+        print(f"No .tscn files found in {folder_path}")
+        return
+    
+    # Get the folder name for the output file
+    folder_name = os.path.basename(folder_path)
+    output_path = os.path.join(folder_path, f"{folder_name}.md")
+    
+    # Process each scene file and combine the results
+    all_scenes_md = []
+    for scene_file in scene_files:
+        scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+        try:
+            nodes, connections, resources = parse_godot_scene(scene_file)
+            scene_md = generate_markdown(nodes, connections, resources, scene_name)
+            all_scenes_md.append(scene_md)
+        except Exception as e:
+            print(f"Error processing {scene_file}: {str(e)}")
+    
+    # Write combined markdown to file
+    if all_scenes_md:
+        with open(output_path, 'w') as f:
+            f.write('\n\n---\n\n'.join(all_scenes_md))
+        print(f"Generated markdown file: {output_path}")
+    else:
+        print("No scenes were successfully processed")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: uv run parse_godot_scene.py <path_to_godot_scene_file>")
+        print("Usage: uv run parse_godot_scene.py <path_to_godot_folder>")
         sys.exit(1)
 
-    scene_file_path = sys.argv[1]
-    if not os.path.isfile(scene_file_path):
-        print(f"File not found: {scene_file_path}")
+    folder_path = sys.argv[1]
+    if not os.path.isdir(folder_path):
+        print(f"Directory not found: {folder_path}")
         sys.exit(1)
 
-    nodes, connections, resources = parse_godot_scene(scene_file_path)
-    output_path = os.path.splitext(scene_file_path)[0] + '.md'
-    generate_markdown(nodes, connections, resources, output_path)
-    print(f"Markdown file generated: {output_path}")
+    process_folder(folder_path)

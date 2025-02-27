@@ -1,5 +1,4 @@
-# Godot Scene
-
+# flappy_bird_game
 ## Nodes
 - **FlappyBirdGame** (Node2D)
   - **Floor** (StaticBody2D)
@@ -20,4 +19,22 @@
   - **ScreenEdgeCollider** (Area2D)
     - **CollisionShape2D** (CollisionShape2D)
 
-## Connections
+
+---
+
+# obstacle_full
+## Nodes
+- **Obstacle** (Node2D)
+  - **ObstacleTop** (res://flappy_bird_clone/obstacle_half.tscn, instanced scene)
+  - **ObstacleBottom** (res://flappy_bird_clone/obstacle_half.tscn, instanced scene)
+  - **ScoringArea** (Area2D)
+    - **CollisionShape2D** (CollisionShape2D)
+
+
+---
+
+# obstacle_half
+## Nodes
+- **ObstacleHalf** (ColorRect)
+  - **Collider** (Area2D)
+    - **CollisionShape2D** (CollisionShape2D)
